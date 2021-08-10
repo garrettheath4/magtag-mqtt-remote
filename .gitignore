@@ -1,3 +1,6 @@
+lib/
+*.bin
+*.uf2
 
 # Created by https://www.toptal.com/developers/gitignore/api/pycharm+iml,python,vim
 # Edit at https://www.toptal.com/developers/gitignore?templates=pycharm+iml,python,vim
