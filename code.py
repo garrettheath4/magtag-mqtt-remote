@@ -24,11 +24,12 @@ except ImportError:
 
 CURRENT_TEMP_TEXT_INDEX = 0
 DESIRED_TEMP_TEXT_INDEX = 1
-CURRENT_TEMP_KEY = "perupino/garrett/temperatureF/current"
-DESIRED_TEMP_KEY = "perupino/garrett/temperatureF/desired"
+CURRENT_TEMP_KEY = "perupino/garrett/fan_thermostat/current"
+DESIRED_TEMP_KEY = "perupino/garrett/fan_thermostat/desired"
 REQUEST_TEMP_TOPIC = "perupino/garrett/temperatureF/magtag/desired"
 
 TEMP_UNITS = "F"
+TEMP_INCREMENT = 0.2
 
 SSID = secrets["ssid"]
 HOSTNAME = secrets["broker"]
@@ -73,7 +74,7 @@ environment = {
 }
 
 
-def _set_temp(temp_value: float, env_key: str, text_index: int):
+def _set_temp_and_text(temp_value: float, env_key: str, text_index: int):
     global environment
     if temp_value != environment[env_key]:
         environment[env_key] = temp_value
@@ -83,25 +84,24 @@ def _set_temp(temp_value: float, env_key: str, text_index: int):
         logger.debug("Skipping screen redraw since temperature is the same")
 
 
-def set_current_temp(current_temp: float):
-    _set_temp(current_temp, CURRENT_TEMP_KEY, CURRENT_TEMP_TEXT_INDEX)
+def set_current_temp_and_text(current_temp: float):
+    _set_temp_and_text(current_temp, CURRENT_TEMP_KEY, CURRENT_TEMP_TEXT_INDEX)
 
 
-def set_desired_temp(desired_temp: float):
-    _set_temp(desired_temp, DESIRED_TEMP_KEY, DESIRED_TEMP_TEXT_INDEX)
+def set_desired_temp_and_text(desired_temp: float):
+    _set_temp_and_text(desired_temp, DESIRED_TEMP_KEY, DESIRED_TEMP_TEXT_INDEX)
 
 
 def increase_desired_temp():
     global environment
-    set_desired_temp(environment[DESIRED_TEMP_KEY] + 0.5)
+    set_desired_temp_and_text(environment[DESIRED_TEMP_KEY] + TEMP_INCREMENT)
 
 
 def decrease_desired_temp():
     global environment
-    set_desired_temp(environment[DESIRED_TEMP_KEY] - 0.5)
+    set_desired_temp_and_text(environment[DESIRED_TEMP_KEY] - TEMP_INCREMENT)
 
 
-logger.info("WiFi connecting to %s", SSID)
 magtag.network.connect()
 logger.info("WiFi connected to %s", SSID)
 
@@ -116,9 +116,11 @@ mqtt_client = minimqtt.MQTT(
 
 # callback(client, topics, message)
 mqtt_client.add_topic_callback(
-    CURRENT_TEMP_KEY, lambda client, topic, message: set_current_temp(float(message)))
+    CURRENT_TEMP_KEY,
+    lambda client, topic, message: set_current_temp_and_text(float(message)))
 mqtt_client.add_topic_callback(
-    DESIRED_TEMP_KEY, lambda client, topic, message: set_desired_temp(float(message)))
+    DESIRED_TEMP_KEY,
+    lambda client, topic, message: set_desired_temp_and_text(float(message)))
 
 mqtt_client.enable_logger(adafruit_logging, log_level=adafruit_logging.INFO)
 mqtt_client.connect()
@@ -154,6 +156,7 @@ while True:
         continue
 
     if magtag.peripherals.button_b_pressed:
+        # TODO: Keep incrementing temp (slowly) until button is released
         logger.debug("UP button pressed")
         increase_desired_temp()
         mqtt_client.publish(REQUEST_TEMP_TOPIC, environment[DESIRED_TEMP_KEY], qos=0)
