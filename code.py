@@ -1,8 +1,5 @@
-# SPDX-FileCopyrightText: 2017 Scott Shawcroft, written for Adafruit Industries
-#
-# SPDX-License-Identifier: Unlicense
-
-import time
+# SPDX-FileCopyrightText: 2021 Garrett Heath Koller, based on code by Scott Shawcroft, written for Adafruit Industries
+# SPDX-License-Identifier: MIT
 
 import adafruit_logging
 from adafruit_magtag.magtag import MagTag
@@ -20,7 +17,7 @@ import socketpool
 try:
     from secrets import secrets
 except ImportError:
-    print("WiFi secrets are kept in secrets.py, please add them there!")
+    print("WiFi secrets are kept in secrets.py; please add them there!")
     raise
 
 
@@ -28,6 +25,7 @@ CURRENT_TEMP_TEXT_INDEX = 0
 DESIRED_TEMP_TEXT_INDEX = 1
 CURRENT_TEMP_KEY = "perupino/garrett/temperatureF/current"
 DESIRED_TEMP_KEY = "perupino/garrett/temperatureF/desired"
+REQUEST_TEMP_KEY = "perupino/garrett/temperatureF/magtag/desired"
 
 TEMP_UNITS = "F"
 
@@ -36,7 +34,7 @@ HOSTNAME = secrets["broker"]
 PORT = secrets["port"]
 
 logger = adafruit_logging.getLogger("code.py")
-logger.setLevel(adafruit_logging.DEBUG)
+logger.setLevel(adafruit_logging.INFO)
 
 magtag = MagTag(
     # debug=True,
@@ -92,6 +90,16 @@ def set_desired_temp(desired_temp: float):
     _set_temp(desired_temp, DESIRED_TEMP_KEY, DESIRED_TEMP_TEXT_INDEX)
 
 
+def increase_desired_temp():
+    global environment
+    set_desired_temp(environment[DESIRED_TEMP_KEY] + 0.5)
+
+
+def decrease_desired_temp():
+    global environment
+    set_desired_temp(environment[DESIRED_TEMP_KEY] - 0.5)
+
+
 logger.info("WiFi connecting to %s", SSID)
 magtag.network.connect()
 logger.info("WiFi connected to %s", SSID)
@@ -111,7 +119,7 @@ mqtt_client.add_topic_callback(
 mqtt_client.add_topic_callback(
     DESIRED_TEMP_KEY, lambda client, topic, message: set_desired_temp(float(message)))
 
-mqtt_client.enable_logger(adafruit_logging, log_level=adafruit_logging.DEBUG)
+mqtt_client.enable_logger(adafruit_logging, log_level=adafruit_logging.INFO)
 mqtt_client.connect()
 
 mqtt_client.subscribe([(CURRENT_TEMP_KEY, 1), (DESIRED_TEMP_KEY, 1)])
@@ -124,7 +132,7 @@ while True:
         mqtt_client.is_connected()
     except minimqtt.MMQTTException:
         logger.error("MQTT client is NOT connected")
-        #TODO: Update the display or NeoPixels to indicate an error has occurred
+        # TODO: Update the display or NeoPixels to indicate an error has occurred
         continue
     # magtag.peripherals.neopixels.fill((0xFF, 0xFF, 0xFF))
     # noinspection PyBroadException
@@ -146,7 +154,11 @@ while True:
 
     if magtag.peripherals.button_b_pressed:
         logger.debug("UP button pressed")
-        #TODO: Send an MQTT message to turn UP the thermostat
+        increase_desired_temp()
+        mqtt_client.publish(REQUEST_TEMP_KEY, environment[DESIRED_TEMP_KEY], qos=0)
+        logger.info(f"Requested new desired temperature: {environment[DESIRED_TEMP_KEY]}")
     elif magtag.peripherals.button_c_pressed:
         logger.debug("DOWN button pressed")
-        #TODO: Send an MQTT message to turn DOWN the thermostat
+        decrease_desired_temp()
+        mqtt_client.publish(REQUEST_TEMP_KEY, environment[DESIRED_TEMP_KEY], qos=0)
+        logger.info(f"Requested new desired temperature: {environment[DESIRED_TEMP_KEY]}")
