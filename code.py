@@ -15,6 +15,7 @@ import socketpool
 # source control.
 # pylint: disable=no-name-in-module,wrong-import-order
 try:
+    # noinspection PyProtectedMember
     from secrets import secrets
 except ImportError:
     print("WiFi secrets are kept in secrets.py; please add them there!")
@@ -25,7 +26,7 @@ CURRENT_TEMP_TEXT_INDEX = 0
 DESIRED_TEMP_TEXT_INDEX = 1
 CURRENT_TEMP_KEY = "perupino/garrett/temperatureF/current"
 DESIRED_TEMP_KEY = "perupino/garrett/temperatureF/desired"
-REQUEST_TEMP_KEY = "perupino/garrett/temperatureF/magtag/desired"
+REQUEST_TEMP_TOPIC = "perupino/garrett/temperatureF/magtag/desired"
 
 TEMP_UNITS = "F"
 
@@ -155,10 +156,10 @@ while True:
     if magtag.peripherals.button_b_pressed:
         logger.debug("UP button pressed")
         increase_desired_temp()
-        mqtt_client.publish(REQUEST_TEMP_KEY, environment[DESIRED_TEMP_KEY], qos=0)
+        mqtt_client.publish(REQUEST_TEMP_TOPIC, environment[DESIRED_TEMP_KEY], qos=0)
         logger.info(f"Requested new desired temperature: {environment[DESIRED_TEMP_KEY]}")
     elif magtag.peripherals.button_c_pressed:
         logger.debug("DOWN button pressed")
         decrease_desired_temp()
-        mqtt_client.publish(REQUEST_TEMP_KEY, environment[DESIRED_TEMP_KEY], qos=0)
+        mqtt_client.publish(REQUEST_TEMP_TOPIC, environment[DESIRED_TEMP_KEY], qos=0)
         logger.info(f"Requested new desired temperature: {environment[DESIRED_TEMP_KEY]}")
