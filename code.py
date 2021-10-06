@@ -1,10 +1,15 @@
 # SPDX-FileCopyrightText: 2021 Garrett Heath Koller, based on code by Scott Shawcroft, written for Adafruit Industries
 # SPDX-License-Identifier: MIT
 
+# Standard Python libraries
+import json
+
+# Adafruit libraries
 import adafruit_logging
 from adafruit_magtag.magtag import MagTag
 import adafruit_minimqtt.adafruit_minimqtt as minimqtt
 
+# Built-in CircuitPython libraries
 # noinspection PyUnresolvedReferences
 import wifi
 # noinspection PyUnresolvedReferences
@@ -24,9 +29,11 @@ except ImportError:
 
 CURRENT_TEMP_TEXT_INDEX = 0
 DESIRED_TEMP_TEXT_INDEX = 1
-CURRENT_TEMP_KEY = "perupino/garrett/fan_thermostat/current"
-DESIRED_TEMP_KEY = "perupino/garrett/fan_thermostat/desired"
-REQUEST_TEMP_TOPIC = "perupino/garrett/temperatureF/magtag/desired"
+CURRENT_TEMP_KEY = "current"
+DESIRED_TEMP_KEY = "desired"
+THERMOSTAT_STATUS_TOPIC = "perupino/garrett/fan_thermostat/status_json"
+REQUEST_TEMP_TOPIC = "perupino/garrett/fan_thermostat/remote/magtag1/desired"
+MAGTAG_STATUS_TOPIC = "perupino/garrett/fan_thermostat/remote/magtag1/status"
 
 TEMP_UNITS = "F"
 TEMP_INCREMENT = 0.2
@@ -57,7 +64,7 @@ magtag.add_text(
     text_anchor_point=(0.5, 0.5),
     is_data=False,
 )
-magtag.set_text(f"-- {TEMP_UNITS}", 0, False)
+magtag.set_text(f"--.- {TEMP_UNITS}", 0, False)
 
 # Add desired temperature label
 magtag.add_text(
@@ -66,7 +73,7 @@ magtag.add_text(
     text_anchor_point=(0.5, 0.5),
     is_data=False,
 )
-magtag.set_text(f"-- {TEMP_UNITS}", 1, True)
+magtag.set_text(f"--.- {TEMP_UNITS}", 1, True)
 
 environment = {
     CURRENT_TEMP_KEY: 0.0,
@@ -74,38 +81,51 @@ environment = {
 }
 
 
-def _set_temp_and_text(temp_value: float, env_key: str, text_index: int):
+def _set_temp_and_text(temp_value: float, env_key: str, text_index: int,
+                       auto_refresh: bool = True):
     global environment
     if temp_value != environment[env_key]:
         environment[env_key] = temp_value
+        logger.info(f"New {env_key} temperature: {environment[env_key]:.1f}")
         magtag.set_text(f"{environment[env_key]:.1f} {TEMP_UNITS}",
-                        text_index)
+                        index=text_index, auto_refresh=auto_refresh)
     else:
         logger.debug("Skipping screen redraw since temperature is the same")
 
 
-def set_current_temp_and_text(current_temp: float):
-    _set_temp_and_text(current_temp, CURRENT_TEMP_KEY, CURRENT_TEMP_TEXT_INDEX)
+def set_and_display_thermostat_status(json_message: str):
+    message_data = json.loads(json_message)
+    if CURRENT_TEMP_KEY not in message_data:
+        raise ValueError("Key missing from JSON object in MQTT message:",
+                         CURRENT_TEMP_KEY)
+    _set_temp_and_text(message_data[CURRENT_TEMP_KEY],
+                       CURRENT_TEMP_KEY, CURRENT_TEMP_TEXT_INDEX, auto_refresh=False)
+    if DESIRED_TEMP_KEY not in message_data:
+        raise ValueError("Key missing from JSON object in MQTT message:",
+                         DESIRED_TEMP_KEY)
+    _set_temp_and_text(message_data[DESIRED_TEMP_KEY],
+                       DESIRED_TEMP_KEY, DESIRED_TEMP_TEXT_INDEX, auto_refresh=True)
 
 
 def set_desired_temp_and_text(desired_temp: float):
     _set_temp_and_text(desired_temp, DESIRED_TEMP_KEY, DESIRED_TEMP_TEXT_INDEX)
 
 
-def increase_desired_temp():
+def increase_desired_temp(amount: float = TEMP_INCREMENT):
     global environment
-    set_desired_temp_and_text(environment[DESIRED_TEMP_KEY] + TEMP_INCREMENT)
+    set_desired_temp_and_text(environment[DESIRED_TEMP_KEY] + amount)
 
 
-def decrease_desired_temp():
+def decrease_desired_temp(amount: float = TEMP_INCREMENT):
     global environment
-    set_desired_temp_and_text(environment[DESIRED_TEMP_KEY] - TEMP_INCREMENT)
+    set_desired_temp_and_text(environment[DESIRED_TEMP_KEY] - amount)
 
 
 magtag.network.connect()
 logger.info("WiFi connected to %s", SSID)
 
 # Set up a MiniMQTT Client
+# TODO: Explain how to configure Home Assistant to control thermostat with MQTT
 mqtt_client = minimqtt.MQTT(
     broker=HOSTNAME,
     port=PORT,
@@ -116,16 +136,13 @@ mqtt_client = minimqtt.MQTT(
 
 # callback(client, topics, message)
 mqtt_client.add_topic_callback(
-    CURRENT_TEMP_KEY,
-    lambda client, topic, message: set_current_temp_and_text(float(message)))
-mqtt_client.add_topic_callback(
-    DESIRED_TEMP_KEY,
-    lambda client, topic, message: set_desired_temp_and_text(float(message)))
+    THERMOSTAT_STATUS_TOPIC,
+    lambda client, topic, message: set_and_display_thermostat_status(message))
 
 mqtt_client.enable_logger(adafruit_logging, log_level=adafruit_logging.INFO)
 mqtt_client.connect()
 
-mqtt_client.subscribe([(CURRENT_TEMP_KEY, 1), (DESIRED_TEMP_KEY, 1)])
+mqtt_client.subscribe(THERMOSTAT_STATUS_TOPIC)
 
 # Start a blocking message loop...
 # NOTE: NO code below this loop will execute

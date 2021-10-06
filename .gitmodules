@@ -1,3 +1,3 @@
 [submodule "Adafruit_CircuitPython_MiniMQTT"]
 	path = Adafruit_CircuitPython_MiniMQTT
-	url = ./Adafruit_CircuitPython_MiniMQTT
+	url = https://github.com/garrettheath4/Adafruit_CircuitPython_MiniMQTT.git
